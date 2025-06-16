@@ -27,12 +27,6 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 TRANSACTIONS_TOPIC = os.getenv("KAFKA_TRANSACTIONS_TOPIC", "transactions")
 SCORING_TOPIC = os.getenv("KAFKA_SCORING_TOPIC", "scoring")
 
-MODEL_FEATURES = [
-    'merch', 'cat_id', 'amount', 'gender', 'one_city', 'us_state',
-    'post_code', 'lat', 'lon', 'population_city', 'jobs',
-    'merchant_lat', 'merchant_lon', 'is_weekend', 'year', 'month',
-    'day', 'hour', 'minute'
-]
 
 
 class ProcessingService:

@@ -18,15 +18,21 @@ services:
     networks:
       - ml-scorer
     ports:
-      - "9095:9095"
+      - "9092:9092"    # внутренний и тестовый хостовый слушают одинаково
+      - "9095:9095"    # внешний слушатель для локальной машины
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # Объявляем оба listener-а и их порты
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9095
+
+      # Рекламируем их под понятными адресами
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9095
+
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # Отключаем автосоздание топиков
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9095", "--list"]
       interval: 5s
@@ -84,6 +90,45 @@ services:
       - kafka
       - kafka-setup
 
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "fraud"]
+      interval: 10s
+      retries: 5
+    networks:
+      - ml-scorer
+
+  score-sink:
+    build: ./score_sink
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup: 
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    networks:
+      - ml-scorer
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC: scoring
+      PG_HOST: db
+      PG_DB: fraud
+      PG_USER: fraud
+      PG_PASS: fraud
+
+
   interface:
     build: ./interface
     networks:
@@ -91,8 +136,14 @@ services:
     environment:
       KAFKA_BROKERS: "kafka:9092"  # Используем внутренний адрес Kafka
       KAFKA_TOPIC: "transactions"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: fraud
+      DB_USER: fraud
+      DB_PASS: fraud
     depends_on:
       - kafka
+      - db
     ports:
       - "8501:8501"
 
@@ -100,3 +151,6 @@ networks:
   ml-scorer:
     name: ml-scorer
     driver: bridge
+
+volumes:
+  pgdata: 

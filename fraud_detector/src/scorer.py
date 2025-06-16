@@ -18,40 +18,15 @@ model.load_model('./models/my_model.cbm')
 # Define optimal threshold
 model_th = 0.5
 logger.info('Pretrained model imported successfully...')
-CAT_FEATURES = [
-    'merch', 'cat_id', 'gender', 'one_city', 'us_state',
-    'jobs', 'post_code', 'is_weekend', 'year', 'month',
-    'day', 'hour', 'minute'
-]
+
 
 def make_pred(dt: pd.DataFrame, source_info="kafka") -> pd.DataFrame:
-    # 1) Убираем target, если он есть
-    if 'target' in dt.columns:
-        dt = dt.drop(columns=['target'])
-    
-    # 2) Приводим датафрейм к тому же набору и порядку фич, что и при обучении
-    expected_feats = model.feature_names_
-    missing = set(expected_feats) - set(dt.columns)
-    if missing:
-        raise ValueError(f"В данных не хватает фич: {missing}")
-    # Порядок очень важен :contentReference[oaicite:1]{index=1}
-    dt = dt[expected_feats]
-    
-    # 3) Категории в str
-    for c in CAT_FEATURES:
-        if c in dt.columns:
-            dt[c] = dt[c].astype(str)
-    
-    # 4) Собираем Pool с явным указанием категориальных
-    pool = Pool(dt, cat_features=[c for c in CAT_FEATURES if c in dt.columns])
-    
-    # 5) Однократный вызов predict_proba
-    proba = model.predict_proba(pool)[:, 1]
-    flags = (proba > model_th).astype(int)
-    
+    # Calculate score
     submission = pd.DataFrame({
-        'score': proba,
-        'fraud_flag': flags
+        'score':  model.predict_proba(dt)[:, 1],
+        'fraud_flag': (model.predict_proba(dt)[:, 1] > model_th) * 1
     })
     logger.info(f'Prediction complete for data from {source_info}')
+
+    # Return proba for positive class
     return submission

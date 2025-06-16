@@ -5,12 +5,37 @@ import json
 import time
 import os
 import uuid
+import psycopg2
+import matplotlib.pyplot as plt
+
 
 # Конфигурация Kafka
 KAFKA_CONFIG = {
     "bootstrap_servers": os.getenv("KAFKA_BROKERS", "kafka:9092"),
     "topic": os.getenv("KAFKA_TOPIC", "transactions")
 }
+
+# получение доступа к БД
+def get_conn():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", "5432"),
+        dbname=os.getenv("DB_NAME", "fraud"),
+        user=os.getenv("DB_USER", "fraud"),
+        password=os.getenv("DB_PASS", "fraud")
+    )
+
+
+# получаем данные для гистограммы
+@st.cache_data(ttl=30)
+def fetch():
+    with get_conn() as conn:
+        return pd.read_sql("""
+            SELECT transaction_id, score, fraud_flag, scored_at
+            FROM fraud_scores
+            ORDER BY scored_at DESC
+            LIMIT 100
+        """, conn)
 
 def load_file(uploaded_file):
     """Загрузка CSV файла в DataFrame"""
@@ -100,3 +125,14 @@ if st.session_state.uploaded_files:
                             st.rerun()
                 else:
                     st.error("Файл не содержит данных")
+
+if st.button("Посмотреть результаты"):
+    df = fetch()
+    st.subheader("Последние 10 мошеннических транзакций")
+    st.table(df[df.fraud_flag == True].head(10))
+    st.subheader("Гистограмма скорингов (100 последних)")
+    fig, ax = plt.subplots()
+    ax.hist(df.score, bins=20)
+    ax.set_xlabel("Score")
+    ax.set_ylabel("Frequency")
+    st.pyplot(fig)
